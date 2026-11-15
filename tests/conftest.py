@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.fakes import FakeTranscriber
 
 
 @pytest.fixture
@@ -19,9 +20,16 @@ def settings(tmp_path: Path) -> Settings:
 
 
 @pytest.fixture
-def client(settings: Settings) -> Iterator[TestClient]:
-    with TestClient(create_app(settings)) as test_client:
+def transcriber() -> FakeTranscriber:
+    return FakeTranscriber()
+
+
+@pytest.fixture
+def client(settings: Settings, transcriber: FakeTranscriber) -> Iterator[TestClient]:
+    """The whole application, started and stopped around each test, with a fake model."""
+    with TestClient(create_app(settings, transcriber)) as test_client:
         yield test_client
+    transcriber.resume()
 
 
 def _ffmpeg(*arguments: str, stdout: int | None = None) -> None:

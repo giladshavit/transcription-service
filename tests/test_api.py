@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings
 from app.main import create_app
+from tests.fakes import FakeTranscriber
 
 
 def test_health(client: TestClient) -> None:
@@ -17,5 +18,7 @@ def test_startup_fails_when_ffmpeg_is_missing(
 ) -> None:
     monkeypatch.setattr("app.media.shutil.which", lambda name: None)
 
-    with pytest.raises(RuntimeError, match="ffmpeg"), TestClient(create_app(settings)):
+    app = create_app(settings, FakeTranscriber())
+
+    with pytest.raises(RuntimeError, match="ffmpeg"), TestClient(app):
         pass
