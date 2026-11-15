@@ -15,31 +15,47 @@ an open-source model loaded from the Hugging Face Hub and run on CPU with
 
 ## Quick start with Docker
 
-The only requirement is Docker with Compose v2.
+The only requirement is Docker with Compose v2 or newer. Run this in the repository
+folder:
 
 ```bash
 docker compose up --build
 ```
 
-Then open <http://localhost:8000>.
+The command keeps running and prints the service log. Run later commands in a second
+terminal, in the same folder. When the log shows `Application startup complete`, open
+<http://localhost:8000>, choose an audio or video file (an 11-second sample is at
+`tests/data/jfk.mp3`) and press **Transcribe**.
 
 - The first build downloads the base image, ffmpeg, the Python dependencies and the model
   (about 0.5 GB), and takes a few minutes. Later starts take a few seconds.
-- If port 8000 is taken, pick another one: `PORT=8080 docker compose up --build`.
-- Settings are changed the same way, or in a `.env` file next to `docker-compose.yml`:
-  `MAX_DURATION_MINUTES=120 docker compose up` (see [Configuration](#configuration)).
-- Stop with `docker compose down`. Add `-v` to also delete the stored transcripts.
+- If port 8000 is taken, pick another one: `PORT=8080 docker compose up --build`, then
+  open <http://localhost:8080>. In PowerShell the form is
+  `$env:PORT = '8080'; docker compose up --build`. The log still shows port 8000, the
+  port inside the container.
+- Settings are changed the same way: `MAX_DURATION_MINUTES=120 docker compose up`. In any
+  shell they can also go in a `.env` file next to `docker-compose.yml`: copy
+  `.env.example` to `.env` and edit it (the port can be set there too). See
+  [Configuration](#configuration).
+- Stop with Ctrl+C. `docker compose down` then removes the container, and
+  `docker compose down -v` also deletes the stored transcripts.
 
-To try it without a browser, upload the bundled 11-second sample and print its
-transcript. The script needs `curl` and `python3` on the host, and takes the address as
-an argument if the port was changed (`./scripts/smoke_test.sh http://localhost:8080`):
+To try it without a browser, run the script below: it uploads the same sample and prints
+its transcript. It is a bash script for macOS and Linux that needs `curl` and `python3`
+on the host, and takes the address as an argument if the port was changed
+(`./scripts/smoke_test.sh http://localhost:8080`):
 
-```console
-$ ./scripts/smoke_test.sh
+```bash
+./scripts/smoke_test.sh
+```
+
+```text
 Accepted: http://localhost:8000/api/transcriptions/6bb29d000dd04414a51a944af76b5019
 And so my fellow Americans, ask not what your country can do for you.
 Ask what you can do for your country.
 ```
+
+In PowerShell, use the three commands under [Using the API](#using-the-api) instead.
 
 ## Running the tests
 
@@ -49,16 +65,22 @@ Inside Docker, with nothing else installed (lint, type check and the whole fast 
 docker compose run --rm --build tests
 ```
 
-Locally (needs Python 3.12 or newer, [uv](https://docs.astral.sh/uv/) and `ffmpeg`, on
-Linux or an Apple Silicon Mac: one dependency, onnxruntime, no longer publishes wheels
-for Intel Macs, where Docker is the way to run this):
+Locally (needs `make`, Python 3.12 or newer, [uv](https://docs.astral.sh/uv/) and
+`ffmpeg`, on Linux or an Apple Silicon Mac with macOS 14 or newer: one dependency,
+onnxruntime, no longer publishes wheels for Intel Macs, where Docker is the way to run
+this):
 
 ```bash
-make install            # create .venv with the locked dependencies
-make test               # 142 tests, a few seconds, no model needed
-make lint               # ruff (lint and formatting) and mypy (types)
-make test-integration   # the real model on the sample clip (downloads the model once)
+make install
+make test
+make lint
+make test-integration
 ```
+
+`make install` creates `.venv` with the locked dependencies. `make test` runs the 142
+fast tests in a few seconds and needs no model. `make lint` runs ruff (lint and
+formatting) and mypy (types). `make test-integration` runs the real model on the sample
+clip and downloads the model once.
 
 The fast suite runs the whole application with a fake model, and generates its media
 files (a tone, a video with and without sound, corrupt files) with ffmpeg as it runs.
@@ -69,28 +91,44 @@ sample recording through the API).
 
 ## Running locally without Docker
 
+This has the same requirements as the local tests above. Stop the Docker service first
+(Ctrl+C, or `docker compose down`), because `make run` uses port 8000 too.
+
 ```bash
 make install
-make run                # http://localhost:8000
+make run
 ```
 
-The first start downloads the model into the Hugging Face cache. `make help` lists every
+The first start downloads the model into the Hugging Face cache. When the log shows
+`Application startup complete`, open <http://localhost:8000>. `make help` lists every
 command.
 
 ## Using the API
 
-Interactive documentation is served at <http://localhost:8000/docs>.
+Interactive documentation is served at <http://localhost:8000/docs>. In Windows
+PowerShell, type `curl.exe` in the commands below: `curl` is an alias of another command
+there.
 
-```bash
-# 1. Upload. The answer comes back at once: 202 Accepted and a Location header.
-curl -i -F "file=@tests/data/jfk.mp3" -F "language=en" http://localhost:8000/api/transcriptions
+1. Upload. The answer comes back at once: `202 Accepted` and a `Location` header that
+   ends with the id of the job.
 
-# 2. Poll the job until its status is "completed" (or "failed").
-curl http://localhost:8000/api/transcriptions/<id>
+   ```bash
+   curl -i -F "file=@tests/data/jfk.mp3" -F "language=en" http://localhost:8000/api/transcriptions
+   ```
 
-# 3. Download the transcript: format is txt, srt, vtt or json.
-curl -OJ "http://localhost:8000/api/transcriptions/<id>/download?format=srt"
-```
+2. Poll the job until its status is `completed` (or `failed`). In this command and the
+   next, replace `<id>` with the id from step 1.
+
+   ```bash
+   curl "http://localhost:8000/api/transcriptions/<id>"
+   ```
+
+3. Download the transcript. The format is `txt`, `srt`, `vtt` or `json`, and curl saves
+   the file in the current folder (`jfk.srt` here).
+
+   ```bash
+   curl -OJ "http://localhost:8000/api/transcriptions/<id>/download?format=srt"
+   ```
 
 | Method | Path | What it does | Success | Errors |
 |---|---|---|---|---|
