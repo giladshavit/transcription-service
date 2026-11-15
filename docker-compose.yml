@@ -11,10 +11,18 @@ services:
     volumes:
       # The job database and uploads in progress survive `docker compose down`.
       - data:/data
-    env_file:
-      # Optional overrides, the same file a local run reads (see .env.example).
-      - path: .env
-        required: false
+    environment:
+      # Passed through when set in the shell or in a .env file next to this file
+      # (see .env.example). The model is not here: it is baked into the image, so it
+      # is changed at build time.
+      - WHISPER_CPU_THREADS
+      - WHISPER_BEAM_SIZE
+      - MAX_UPLOAD_MB
+      - MAX_DURATION_MINUTES
+      - MAX_PENDING_JOBS
+      - MAX_JOB_ATTEMPTS
+      - LOG_LEVEL
+      - LOG_FORMAT
     init: true # reaps finished ffmpeg processes and forwards signals
     stop_grace_period: 30s # time for the worker to put a running job back in the queue
     restart: unless-stopped

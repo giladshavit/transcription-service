@@ -9,7 +9,8 @@ __pycache__/
 .env
 /data/
 
-# OS and editors
+# OS, editors and local tools
 .DS_Store
 .idea/
 .vscode/
+.claude/

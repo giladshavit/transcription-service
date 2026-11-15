@@ -47,6 +47,8 @@ FROM deps AS model
 # access. The price is a larger image. Build with another model:
 #   docker compose build --build-arg WHISPER_MODEL=<Hugging Face repository>
 ARG WHISPER_MODEL=Systran/faster-whisper-small
+# HF_HUB_DISABLE_XET=1 downloads over plain HTTP. The default transfer keeps a chunk
+# cache of its own under HF_HOME, which would be copied into the image with the model.
 RUN HF_HUB_DISABLE_XET=1 python -c \
     "from faster_whisper import download_model; download_model('${WHISPER_MODEL}')"
 

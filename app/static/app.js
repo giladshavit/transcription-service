@@ -565,12 +565,14 @@ async function loadConfig() {
     return; // the form still works; the server validates every upload anyway
   }
   const { extensions, languages, max_upload_bytes: maxBytes, model } = state.config;
+  const maxMinutes = Math.round(state.config.max_duration_seconds / 60);
 
   byId("file-input").accept = extensions.join(",");
   const common = ["MP3", "WAV", "M4A", "MP4", "MOV", "MKV", "WebM"].filter((name) =>
     extensions.includes(`.${name.toLowerCase()}`),
   );
-  byId("file-hint").textContent = `${common.join(", ")} and more, up to ${formatBytes(maxBytes)}`;
+  byId("file-hint").textContent =
+    `${common.join(", ")} and more, up to ${formatBytes(maxBytes)} and ${maxMinutes} minutes`;
   byId("model-name").textContent = `Whisper (${model})`;
 
   const options = languages

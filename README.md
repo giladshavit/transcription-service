@@ -1,5 +1,7 @@
 # Transcription Service
 
+[![CI](https://github.com/giladshavit/transcription-service/actions/workflows/ci.yml/badge.svg)](https://github.com/giladshavit/transcription-service/actions/workflows/ci.yml)
+
 Upload an audio or video file in the browser and get a transcript with timestamps. Copy
 it, or download it as plain text, SRT or WebVTT subtitles, or JSON.
 
@@ -11,7 +13,7 @@ an open-source model loaded from the Hugging Face Hub and run on CPU with
 
 ## Quick start with Docker
 
-The only requirement is Docker with Compose.
+The only requirement is Docker with Compose v2.
 
 ```bash
 docker compose up --build
@@ -22,12 +24,18 @@ Then open <http://localhost:8000>.
 - The first build downloads the base image, ffmpeg, the Python dependencies and the model
   (about 0.5 GB), and takes a few minutes. Later starts take a few seconds.
 - If port 8000 is taken, pick another one: `PORT=8080 docker compose up --build`.
+- Settings are changed the same way, or in a `.env` file next to `docker-compose.yml`:
+  `MAX_DURATION_MINUTES=120 docker compose up` (see [Configuration](#configuration)).
 - Stop with `docker compose down`. Add `-v` to also delete the stored transcripts.
 
-To try it without a browser, upload the bundled 11-second sample and print its transcript:
+To try it without a browser, upload the bundled 11-second sample and print its
+transcript (the script needs `curl` and `python3` on the host):
 
-```bash
-./scripts/smoke_test.sh
+```console
+$ ./scripts/smoke_test.sh
+Accepted: http://localhost:8000/api/transcriptions/6bb29d000dd04414a51a944af76b5019
+And so my fellow Americans, ask not what your country can do for you.
+Ask what you can do for your country.
 ```
 
 ## Running the tests
@@ -49,6 +57,10 @@ make test-integration   # the real model on the sample clip (downloads the model
 
 The fast suite runs the whole application with a fake model, and generates its media
 files (a tone, a video with and without sound, corrupt files) with ffmpeg as it runs.
+
+Every push runs two jobs on GitHub Actions, on x86_64 Linux: the suite inside the image,
+and the path from the quick start (build the image, start the service, transcribe the
+sample recording through the API).
 
 ## Running locally without Docker
 
@@ -207,8 +219,10 @@ The default was chosen by measuring (Apple M4, CPU, `int8`, beam size 5):
   utterances by one reader. Hebrew: 12 clips from the FLEURS test set.
 - WER (word error rate) after lower-casing and removing punctuation. The samples are
   small: they guided a choice and are not a benchmark claim.
-- `uv run python scripts/benchmark.py [model]` repeats the English measurement through
-  the service's own code path.
+- Both rows were measured with one call to the model per recording, before the windowed
+  transcription described below was added. `uv run python scripts/benchmark.py [model]`
+  measures the service's own code path, windows included: 3.9% for the default model.
+  The Hebrew and batched figures came from one-off scripts that are not in the repository.
 
 Inside the Docker container on the same machine (linux/arm64, 4 threads), the 8-minute
 recording took about 2 minutes, so a half-hour recording takes roughly 8 minutes. The
@@ -244,6 +258,8 @@ kept for the rest.
 | Extra memory, one call | 0.5 GB | 1.7 GB | not attempted |
 | Extra memory, 5-minute windows | 0.4 GB | 0.4 GB | 0.4 GB |
 
+These figures are the memory the transcription step adds, measured by calling the
+transcriber directly (the 2-hour recording is above the service's default limit).
 Accuracy did not suffer: 3.9% WER with windows against 4.1% in a single call.
 
 ### Uploaded files are treated as hostile
@@ -329,8 +345,9 @@ In Docker the model is part of the image, so change it at build time:
 ## Assumptions
 
 - A recording is up to about half an hour long, as confirmed for this assignment. The
-  default limit is one hour, to leave a margin, and it is a setting. Because of the
-  windowed transcription, raising it costs time and disk space, not memory.
+  default limit is one hour, to leave a margin, and it is a setting. Raising it costs
+  time and about 230 MB of memory per extra hour for the decoded audio; the
+  transcription step itself stays flat because of the windows.
 - The service runs on one machine, on CPU.
 - English is the main language. Other languages go through the same multilingual model
   with lower accuracy.
@@ -358,6 +375,10 @@ In Docker the model is part of the image, so change it at build time:
   networks.
 - **Context does not carry across windows**, and the language is detected once, so a
   recording that switches language is transcribed as its first language.
+- **An interrupted job starts over.** The 5-minute windows are natural checkpoints:
+  saving the segments after each window would let a job resume where it stopped.
+- **The model revision is not pinned.** The image gets the latest revision of the model
+  repository at build time; pinning one would make builds fully reproducible.
 - **No word-level timestamps or speaker labels.**
 - **The page's JavaScript has no automated tests.** It was checked by hand in a browser.
 - The decoded audio of a recording is held in memory (about 230 MB per hour).
