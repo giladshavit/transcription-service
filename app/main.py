@@ -20,9 +20,10 @@ from app.config import Settings
 from app.errors import register_error_handlers
 from app.logging_config import configure_logging
 from app.media import ensure_ffmpeg_available
-from app.middleware import NoStoreApiResponses, UploadGuard
+from app.middleware import ResponseHeaders, UploadGuard
 from app.store import JobStore
 from app.transcriber import FasterWhisperTranscriber, Transcriber
+from app.web import mount_ui
 from app.worker import TranscriptionWorker
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,7 @@ def create_app(settings: Settings | None = None, transcriber: Transcriber | None
     app.state.settings = settings
     app.state.transcriber = transcriber
     app.include_router(router)
+    mount_ui(app)
     register_error_handlers(app)
     # Middleware added later wraps the ones added before it.
     app.add_middleware(
@@ -76,7 +78,7 @@ def create_app(settings: Settings | None = None, transcriber: Transcriber | None
         max_upload_mb=settings.max_upload_mb,
         max_pending_jobs=settings.max_pending_jobs,
     )
-    app.add_middleware(NoStoreApiResponses)
+    app.add_middleware(ResponseHeaders)
     return app
 
 

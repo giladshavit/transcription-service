@@ -23,9 +23,9 @@ from app.errors import (
     UnsupportedLanguageError,
 )
 from app.formats import MEDIA_TYPES, ExportFormat, render
-from app.media import inspect_media, validate_extension
+from app.media import ALLOWED_EXTENSIONS, inspect_media, validate_extension
 from app.models import Job, JobStatus
-from app.schemas import ErrorResponse, HealthResponse, JobResponse
+from app.schemas import ErrorResponse, HealthResponse, JobResponse, ServiceConfigResponse
 from app.store import JobStore
 from app.transcriber import Transcriber
 from app.worker import TranscriptionWorker
@@ -157,6 +157,23 @@ def download_transcription(
         content=render(export_format, job.segments or [], language=job.language or ""),
         media_type=MEDIA_TYPES[export_format],
         headers={"Content-Disposition": _attachment(job.filename, export_format)},
+    )
+
+
+@router.get(
+    "/api/config",
+    response_model=ServiceConfigResponse,
+    tags=["operations"],
+    summary="Limits and options a client should know before uploading",
+)
+def service_config(settings: SettingsDep, transcriber: TranscriberDep) -> ServiceConfigResponse:
+    """Lets the page check a file before uploading it, without duplicating the limits."""
+    return ServiceConfigResponse(
+        max_upload_bytes=settings.max_upload_bytes,
+        max_duration_seconds=settings.max_duration_seconds,
+        extensions=sorted(ALLOWED_EXTENSIONS),
+        languages=sorted(transcriber.supported_languages),
+        model=settings.whisper_model,
     )
 
 

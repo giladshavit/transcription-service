@@ -65,24 +65,30 @@ class UploadGuard:
         return None
 
 
-class NoStoreApiResponses:
-    """Marks every /api/ response as not cacheable.
+class ResponseHeaders:
+    """Adds the headers every response should carry.
 
-    Job status changes from one second to the next, and transcripts are private, so
-    neither browsers nor proxies should keep copies.
+    * ``X-Content-Type-Options: nosniff``: the browser must trust the declared content
+      type and not guess, so a response can never be reinterpreted as a script.
+    * ``Cache-Control: no-store`` on /api/ responses: job status changes from one second
+      to the next and transcripts are private, so browsers and proxies keep no copies.
     """
 
     def __init__(self, app: ASGIApp) -> None:
         self._app = app
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or not scope["path"].startswith("/api/"):
+        if scope["type"] != "http":
             await self._app(scope, receive, send)
             return
+        is_api_call = scope["path"].startswith("/api/")
 
-        async def send_with_header(message: Message) -> None:
+        async def send_with_headers(message: Message) -> None:
             if message["type"] == "http.response.start":
-                MutableHeaders(scope=message)["Cache-Control"] = "no-store"
+                headers = MutableHeaders(scope=message)
+                headers["X-Content-Type-Options"] = "nosniff"
+                if is_api_call:
+                    headers["Cache-Control"] = "no-store"
             await send(message)
 
-        await self._app(scope, receive, send_with_header)
+        await self._app(scope, receive, send_with_headers)

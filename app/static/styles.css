@@ -1,0 +1,663 @@
+/* Transcription Service: one page, three views (upload, progress, transcript).
+   Every colour, size and font comes from the tokens below. */
+
+:root {
+  color-scheme: light dark;
+
+  /* Colour: a cool paper, dark ink and one accent. --mark is the highlighter
+     used for the line that is being played. */
+  --paper: #f4f5f7;
+  --surface: #ffffff;
+  --ink: #14171f;
+  --ink-soft: #545e6e;
+  --rule: #dde1e8;
+  --rule-strong: #b9c0cc;
+  --accent: #0f766e;
+  --accent-strong: #0b5c56;
+  --accent-ink: #ffffff;
+  --accent-soft: #d8efeb;
+  --mark: #fff0b0;
+  --danger: #b42318;
+  --danger-soft: #fdecea;
+
+  /* Type: system fonts only, so the page makes no third-party requests.
+     Sans for the interface, serif for the transcript (it is a document),
+     monospace for timecodes and figures. */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-document: ui-serif, "New York", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-figures: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --radius: 10px;
+  --radius-large: 14px;
+  --control-height: 44px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e1116;
+    --surface: #161a21;
+    --ink: #e9ecf1;
+    --ink-soft: #9ba5b3;
+    --rule: #272d38;
+    --rule-strong: #414a59;
+    --accent: #2dd4bf;
+    --accent-strong: #5eead4;
+    --accent-ink: #04211d;
+    --accent-soft: #11332f;
+    --mark: #4d4212;
+    --danger: #ff9486;
+    --danger-soft: #3a1613;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  color: var(--ink);
+  font: 400 1rem/1.6 var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+p,
+ol,
+ul {
+  margin: 0;
+}
+
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+a {
+  color: var(--accent);
+  text-underline-offset: 3px;
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+/* Headings receive focus when a view opens, so screen readers announce it. */
+h1:focus {
+  outline: none;
+}
+
+/* A file name in a right-to-left script is read correctly (dir="auto"), but it stays
+   aligned with the rest of the left-to-right interface. */
+h1[dir="auto"] {
+  text-align: left;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Page frame ---------- */
+
+.masthead,
+main,
+.colophon {
+  width: 100%;
+  max-width: 47rem;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding-block: 20px;
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+
+.wordmark__glyph {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.masthead__link {
+  font-size: 0.875rem;
+}
+
+main {
+  flex: 1;
+  padding-block: clamp(24px, 6vh, 72px) 64px;
+}
+
+.colophon {
+  padding-block: 20px 28px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+/* ---------- Views ---------- */
+
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: view-in 220ms ease-out;
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+h1 {
+  font-size: clamp(1.75rem, 1.2rem + 2.2vw, 2.5rem);
+  font-weight: 680;
+  line-height: 1.15;
+  letter-spacing: -0.022em;
+  overflow-wrap: anywhere;
+}
+
+.lede {
+  max-width: 36rem;
+  color: var(--ink-soft);
+  font-size: 1.125rem;
+}
+
+.eyebrow {
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.eyebrow + h1 {
+  margin-top: -16px;
+}
+
+/* ---------- Upload form ---------- */
+
+#upload-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 40px 24px;
+  border: 1.5px dashed var(--rule-strong);
+  border-radius: var(--radius-large);
+  background: var(--surface);
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.dropzone:hover,
+.dropzone:focus-within,
+.dropzone.is-dragover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dropzone:focus-within {
+  outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+.dropzone.has-file {
+  border-style: solid;
+}
+
+.dropzone__icon {
+  width: 28px;
+  height: 28px;
+  margin-bottom: 6px;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.dropzone__title {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.dropzone__choose {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.dropzone__hint {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.form-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 16px;
+}
+
+.field {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.field__control {
+  height: var(--control-height);
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* ---------- Buttons ---------- */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: flex-start;
+  min-height: var(--control-height);
+  padding: 0 20px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 0.9375rem/1 var(--font-ui);
+  cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+.button:hover {
+  border-color: var(--accent);
+}
+
+.button--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+.button--primary:hover {
+  border-color: var(--accent-strong);
+  background: var(--accent-strong);
+}
+
+.button--quiet {
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.form-row .button {
+  align-self: flex-end;
+}
+
+/* ---------- Messages ---------- */
+
+.message {
+  color: var(--ink-soft);
+}
+
+.message:empty {
+  display: none;
+}
+
+.message--error {
+  padding: 12px 16px;
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-weight: 500;
+}
+
+.note {
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+/* ---------- Progress: two stages, each with a meter ---------- */
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: opacity 200ms ease;
+}
+
+.stage.is-pending {
+  opacity: 0.45;
+}
+
+.stage__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.stage__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+/* A check mark drawn with two borders, shown when the stage is done. */
+.stage.is-done .stage__name::before {
+  content: "";
+  width: 6px;
+  height: 12px;
+  margin: 0 4px 3px 3px;
+  border: solid var(--accent);
+  border-width: 0 2.5px 2.5px 0;
+  transform: rotate(45deg);
+}
+
+.stage__figures {
+  color: var(--ink-soft);
+  font: 0.875rem/1.4 var(--font-figures);
+  font-variant-numeric: tabular-nums;
+}
+
+.meter {
+  --progress: 0;
+  position: relative;
+  height: 10px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--rule);
+}
+
+.meter__fill {
+  width: calc(var(--progress) * 100%);
+  height: 100%;
+  background: var(--accent);
+  transition: width 400ms linear;
+}
+
+/* The transcription meter is a ruler of the recording itself: one tick per
+   interval (--ticks is set from the duration), filled up to the point the model
+   has reached. */
+.meter--timeline {
+  --ticks: 1;
+  height: 40px;
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.meter--timeline::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 9px;
+  background: linear-gradient(to right, var(--rule-strong) 1px, transparent 1px) left bottom /
+    calc(100% / var(--ticks)) 100% repeat-x;
+  pointer-events: none;
+}
+
+.meter--timeline .meter__fill {
+  min-width: 2px;
+  border-right: 2px solid var(--accent);
+  background: var(--accent-soft);
+}
+
+/* No figure to show yet (waiting in line, preparing the audio). */
+.meter.is-indeterminate .meter__fill {
+  width: 28%;
+  border-right: 0;
+  animation: sweep 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes sweep {
+  from {
+    transform: translateX(-10%);
+  }
+  to {
+    transform: translateX(270%);
+  }
+}
+
+.timeline-ends {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -4px;
+  color: var(--ink-soft);
+  font: 0.75rem/1 var(--font-figures);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Transcript ---------- */
+
+.result-facts {
+  margin-top: -12px;
+  color: var(--ink-soft);
+  font: 0.875rem/1.4 var(--font-figures);
+}
+
+.player {
+  width: 100%;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.downloads {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.downloads__label {
+  margin-right: 4px;
+  color: var(--ink-soft);
+  font-size: 0.875rem;
+}
+
+.downloads__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: 600 0.75rem/1 var(--font-figures);
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.downloads__link:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-large);
+  background: var(--surface);
+}
+
+.cue {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  align-items: baseline;
+  border-radius: 8px;
+  transition: background-color 150ms ease;
+}
+
+.cue.is-active {
+  background: var(--mark);
+}
+
+.cue__time {
+  padding: 8px 10px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: 0.8125rem/1.65 var(--font-figures);
+  font-variant-numeric: tabular-nums;
+  text-align: start;
+}
+
+button.cue__time {
+  color: var(--accent);
+  cursor: pointer;
+}
+
+button.cue__time:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* The transcript's direction comes from its language. Logical properties
+   (inline-start, not left) make the timecode gutter follow that direction. */
+.cue__text {
+  padding-block: 8px;
+  padding-inline: 16px 12px;
+  border-inline-start: 1px solid var(--rule);
+  font: 1.0625rem/1.65 var(--font-document);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Recent transcripts ---------- */
+
+.recent {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.recent__item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-top: 1px solid var(--rule);
+}
+
+.recent__link {
+  overflow-wrap: anywhere;
+}
+
+.recent__time {
+  flex-shrink: 0;
+  color: var(--ink-soft);
+  font-size: 0.8125rem;
+}
+
+/* ---------- Small screens and motion preferences ---------- */
+
+@media (max-width: 560px) {
+  .form-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-row .button,
+  .view > .button {
+    align-self: stretch;
+  }
+
+  .cue {
+    grid-template-columns: 3.75rem 1fr;
+  }
+
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .toolbar .button {
+    align-self: stretch;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

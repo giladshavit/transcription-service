@@ -64,3 +64,13 @@ class HealthResponse(BaseModel):
     model: str
     worker_alive: bool
     pending_jobs: int
+
+
+class ServiceConfigResponse(BaseModel):
+    """What a client needs to know before uploading."""
+
+    max_upload_bytes: int
+    max_duration_seconds: int
+    extensions: list[str] = Field(description="Accepted file extensions")
+    languages: list[str] = Field(description="Language codes the model can transcribe")
+    model: str
