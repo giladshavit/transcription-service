@@ -1,5 +1,7 @@
 """Shared test fixtures."""
 
+import shutil
+import subprocess
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -20,3 +22,38 @@ def settings(tmp_path: Path) -> Settings:
 def client(settings: Settings) -> Iterator[TestClient]:
     with TestClient(create_app(settings)) as test_client:
         yield test_client
+
+
+def _ffmpeg(*arguments: str, stdout: int | None = None) -> None:
+    subprocess.run(
+        ["ffmpeg", "-nostdin", "-v", "error", "-y", *arguments], check=True, stdout=stdout
+    )
+
+
+@pytest.fixture(scope="session")
+def samples(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A directory of small media files, generated once per test run with ffmpeg.
+
+    Every recording is two seconds long.
+    """
+    if shutil.which("ffmpeg") is None:
+        pytest.skip("ffmpeg is not installed")
+
+    root = tmp_path_factory.mktemp("samples")
+    tone = ("-f", "lavfi", "-i", "sine=frequency=440:duration=2")
+    picture = ("-f", "lavfi", "-i", "testsrc=duration=2:size=160x120:rate=10")
+
+    _ffmpeg(*tone, "-ar", "44100", "-ac", "2", str(root / "tone.wav"))
+    _ffmpeg(*picture, *tone, "-c:v", "mpeg4", "-c:a", "aac", "-shortest", str(root / "video.mp4"))
+    _ffmpeg(*picture, "-c:v", "mpeg4", "-an", str(root / "silent_video.mp4"))
+
+    # Written to a pipe, so the container cannot go back and record its duration.
+    # Recordings made in a browser look like this.
+    with (root / "no_duration.mkv").open("wb") as output:
+        _ffmpeg(*tone, "-c:a", "flac", "-f", "matroska", "-", stdout=output.fileno())
+
+    (root / "not_media.mp3").write_text("this is plain text, not audio\n")
+    (root / "empty.mp3").write_bytes(b"")
+    # An ffconcat script is a playlist: it tells ffmpeg to open the files it lists.
+    (root / "concat_script.mp3").write_text("ffconcat version 1.0\nfile 'tone.wav'\n")
+    return root

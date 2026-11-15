@@ -1,4 +1,8 @@
+import pytest
 from fastapi.testclient import TestClient
+
+from app.config import Settings
+from app.main import create_app
 
 
 def test_health(client: TestClient) -> None:
@@ -6,3 +10,12 @@ def test_health(client: TestClient) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_startup_fails_when_ffmpeg_is_missing(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("app.media.shutil.which", lambda name: None)
+
+    with pytest.raises(RuntimeError, match="ffmpeg"), TestClient(create_app(settings)):
+        pass

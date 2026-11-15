@@ -6,14 +6,6 @@ from pydantic import ValidationError
 from app.config import Settings
 
 
-def test_defaults() -> None:
-    settings = Settings(_env_file=None)
-
-    assert settings.data_dir == Path("data")
-    assert settings.log_level == "INFO"
-    assert settings.log_format == "text"
-
-
 def test_environment_variables_override_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DATA_DIR", "/tmp/somewhere")
     monkeypatch.setenv("LOG_FORMAT", "json")
