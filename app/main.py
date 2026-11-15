@@ -17,8 +17,10 @@ from fastapi import FastAPI
 from app import __version__
 from app.api import router
 from app.config import Settings
+from app.errors import register_error_handlers
 from app.logging_config import configure_logging
 from app.media import ensure_ffmpeg_available
+from app.middleware import NoStoreApiResponses, UploadGuard
 from app.store import JobStore
 from app.transcriber import FasterWhisperTranscriber, Transcriber
 from app.worker import TranscriptionWorker
@@ -66,6 +68,15 @@ def create_app(settings: Settings | None = None, transcriber: Transcriber | None
     app.state.settings = settings
     app.state.transcriber = transcriber
     app.include_router(router)
+    register_error_handlers(app)
+    # Middleware added later wraps the ones added before it.
+    app.add_middleware(
+        UploadGuard,
+        path="/api/transcriptions",
+        max_upload_mb=settings.max_upload_mb,
+        max_pending_jobs=settings.max_pending_jobs,
+    )
+    app.add_middleware(NoStoreApiResponses)
     return app
 
 

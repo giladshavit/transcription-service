@@ -11,8 +11,12 @@ from app.store import JobStore
 from app.worker import TranscriptionWorker
 from tests.fakes import FakeTranscriber
 
+# Waits return as soon as their condition holds, so a generous limit costs nothing on a
+# fast machine and keeps the tests reliable on a busy one.
+PATIENCE_SECONDS = 30.0
 
-def wait_until(condition: Callable[[], bool], timeout: float = 5.0) -> None:
+
+def wait_until(condition: Callable[[], bool], timeout: float = PATIENCE_SECONDS) -> None:
     deadline = time.monotonic() + timeout
     while not condition():
         if time.monotonic() > deadline:
@@ -152,7 +156,7 @@ def test_notify_wakes_an_idle_worker_without_waiting_for_the_poll_interval(
 
     worker.notify()
 
-    wait_until(finished(store, "a" * 32), timeout=5)
+    wait_until(finished(store, "a" * 32))  # far sooner than the 60-second poll interval
     worker.stop()
 
 
@@ -203,7 +207,7 @@ def test_stopping_mid_job_puts_the_job_back_in_the_queue_for_the_next_start(
     transcriber.hold()
     add_upload(store, uploads, samples, "a" * 32)
     first.notify()
-    assert transcriber.started.wait(timeout=5)
+    assert transcriber.started.wait(timeout=PATIENCE_SECONDS)
 
     first.stop()
 

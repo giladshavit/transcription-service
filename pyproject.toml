@@ -40,6 +40,10 @@ select = [
     "RUF", # ruff-specific checks
 ]
 
+[tool.ruff.lint.per-file-ignores]
+# The tests contain Hebrew text on purpose; it is not a look-alike for Latin letters.
+"tests/*" = ["RUF001"]
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",

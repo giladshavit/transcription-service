@@ -2,7 +2,8 @@
 
 import shutil
 import subprocess
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
 
 import pytest
@@ -25,11 +26,23 @@ def transcriber() -> FakeTranscriber:
 
 
 @pytest.fixture
-def client(settings: Settings, transcriber: FakeTranscriber) -> Iterator[TestClient]:
-    """The whole application, started and stopped around each test, with a fake model."""
-    with TestClient(create_app(settings, transcriber)) as test_client:
-        yield test_client
+def make_client(
+    settings: Settings, transcriber: FakeTranscriber
+) -> Iterator[Callable[..., TestClient]]:
+    """Start the whole application with a fake model; keyword arguments override settings."""
+    with ExitStack() as running_apps:
+
+        def make(**overrides: object) -> TestClient:
+            custom_settings = settings.model_copy(update=overrides)
+            return running_apps.enter_context(TestClient(create_app(custom_settings, transcriber)))
+
+        yield make
     transcriber.resume()
+
+
+@pytest.fixture
+def client(make_client: Callable[..., TestClient]) -> TestClient:
+    return make_client()
 
 
 def _ffmpeg(*arguments: str, stdout: int | None = None) -> None:
