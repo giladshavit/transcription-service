@@ -92,16 +92,12 @@ def create_transcription(
     """
     extension = validate_extension(file.filename or "")
     requested_language = _requested_language(language, transcriber)
-    if file.size is not None and file.size > settings.max_upload_bytes:
-        raise FileTooLargeError(settings.max_upload_mb)
-    if store.count_unfinished() >= settings.max_pending_jobs:
-        raise QueueFullError()
+    _refuse_if_over_limits(file, settings, store)
 
     job_id = uuid.uuid4().hex
     upload_path = settings.uploads_dir / f"{job_id}{extension}"
     try:
-        with upload_path.open("wb") as destination:
-            shutil.copyfileobj(file.file, destination, _COPY_CHUNK_BYTES)
+        _save_upload(file, upload_path)
         info = inspect_media(upload_path, max_duration_seconds=settings.max_duration_seconds)
         job = store.create(
             job_id=job_id,
@@ -204,6 +200,20 @@ def _find_job(store: JobStore, job_id: str) -> Job:
     if job is None:
         raise JobNotFoundError()
     return job
+
+
+def _refuse_if_over_limits(file: UploadFile, settings: Settings, store: JobStore) -> None:
+    """The authoritative checks; the upload guard does the same ones before the body is read."""
+    if file.size is not None and file.size > settings.max_upload_bytes:
+        raise FileTooLargeError(settings.max_upload_mb)
+    if store.count_unfinished() >= settings.max_pending_jobs:
+        raise QueueFullError()
+
+
+def _save_upload(file: UploadFile, destination: Path) -> None:
+    """Copy the upload to the data directory in chunks, never as a whole in memory."""
+    with destination.open("wb") as output:
+        shutil.copyfileobj(file.file, output, _COPY_CHUNK_BYTES)
 
 
 def _requested_language(raw: str | None, transcriber: Transcriber) -> str | None:

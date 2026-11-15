@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -44,6 +44,19 @@ class Settings(BaseSettings):
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
     # "text" is easy to read in a terminal; "json" is one object per line for log aggregators.
     log_format: Literal["text", "json"] = "text"
+
+    # LOG_LEVEL is a common variable name, and docker compose passes it through from
+    # the shell. Accept "info" as well as "INFO", so an existing value does not stop
+    # the service from starting.
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def _upper_case(cls, value: object) -> object:
+        return value.upper() if isinstance(value, str) else value
+
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def _lower_case(cls, value: object) -> object:
+        return value.lower() if isinstance(value, str) else value
 
     @property
     def uploads_dir(self) -> Path:

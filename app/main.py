@@ -9,8 +9,8 @@ this process, so several uvicorn workers would each load their own model.
 """
 
 import logging
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -28,37 +28,13 @@ from app.worker import TranscriptionWorker
 
 logger = logging.getLogger(__name__)
 
+Lifespan = Callable[[FastAPI], AbstractAsyncContextManager[None]]
+
 
 def create_app(settings: Settings | None = None, transcriber: Transcriber | None = None) -> FastAPI:
     settings = settings or Settings()
     configure_logging(settings.log_level, settings.log_format)
     transcriber = transcriber or _build_transcriber(settings)
-
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Startup: everything here runs once, before the first request is served.
-        ensure_ffmpeg_available()
-        settings.uploads_dir.mkdir(parents=True, exist_ok=True)
-        store = JobStore(settings.database_path)
-
-        logger.info("Loading the speech-to-text model", extra={"model": settings.whisper_model})
-        transcriber.load()
-        logger.info("Model loaded")
-
-        worker = TranscriptionWorker(
-            store=store,
-            transcriber=transcriber,
-            uploads_dir=settings.uploads_dir,
-            max_duration_seconds=settings.max_duration_seconds,
-            max_attempts=settings.max_job_attempts,
-        )
-        worker.start()
-
-        app.state.store = store
-        app.state.worker = worker
-        yield
-        # Shutdown: a job in progress goes back to the queue and runs again on the next start.
-        worker.stop()
 
     app = FastAPI(
         title="Transcription Service",
@@ -68,22 +44,41 @@ def create_app(settings: Settings | None = None, transcriber: Transcriber | None
             "name": "Gilad Shavit",
             "url": "https://github.com/giladshavit/transcription-service",
         },
-        lifespan=lifespan,
+        lifespan=_lifespan(settings, transcriber),
     )
     app.state.settings = settings
     app.state.transcriber = transcriber
     app.include_router(router)
     mount_ui(app)
     register_error_handlers(app)
-    # Middleware added later wraps the ones added before it.
-    app.add_middleware(
-        UploadGuard,
-        path="/api/transcriptions",
-        max_upload_mb=settings.max_upload_mb,
-        max_pending_jobs=settings.max_pending_jobs,
-    )
-    app.add_middleware(ResponseHeaders)
+    _add_middleware(app, settings)
     return app
+
+
+def _lifespan(settings: Settings, transcriber: Transcriber) -> Lifespan:
+    """What runs once before the first request is served, and once at shutdown."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        ensure_ffmpeg_available()
+        settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+        store = JobStore(settings.database_path)
+        _load_model(transcriber, settings)
+        worker = _build_worker(settings, store, transcriber)
+        worker.start()
+        app.state.store = store
+        app.state.worker = worker
+        yield
+        # A job in progress goes back to the queue and runs again on the next start.
+        worker.stop()
+
+    return lifespan
+
+
+def _load_model(transcriber: Transcriber, settings: Settings) -> None:
+    logger.info("Loading the speech-to-text model", extra={"model": settings.whisper_model})
+    transcriber.load()
+    logger.info("Model loaded")
 
 
 def _build_transcriber(settings: Settings) -> Transcriber:
@@ -94,3 +89,26 @@ def _build_transcriber(settings: Settings) -> Transcriber:
         cpu_threads=settings.whisper_cpu_threads,
         beam_size=settings.whisper_beam_size,
     )
+
+
+def _build_worker(
+    settings: Settings, store: JobStore, transcriber: Transcriber
+) -> TranscriptionWorker:
+    return TranscriptionWorker(
+        store=store,
+        transcriber=transcriber,
+        uploads_dir=settings.uploads_dir,
+        max_duration_seconds=settings.max_duration_seconds,
+        max_attempts=settings.max_job_attempts,
+    )
+
+
+def _add_middleware(app: FastAPI, settings: Settings) -> None:
+    # Middleware added later wraps the ones added before it.
+    app.add_middleware(
+        UploadGuard,
+        path="/api/transcriptions",
+        max_upload_mb=settings.max_upload_mb,
+        max_pending_jobs=settings.max_pending_jobs,
+    )
+    app.add_middleware(ResponseHeaders)

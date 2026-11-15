@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 # Whisper models expect mono audio sampled at 16 kHz.
 SAMPLE_RATE = 16_000
+# Decoded audio is one channel of 32-bit float samples.
+_BYTES_PER_SECOND = SAMPLE_RATE * 4
 
 # File types accepted at upload time.
 ALLOWED_EXTENSIONS = frozenset(
@@ -83,31 +85,8 @@ def inspect_media(path: Path, *, max_duration_seconds: float) -> MediaInfo:
     Raises UnprocessableMediaError if the file is not readable media, has no audio
     track, or declares a duration over the limit.
     """
-    command = [
-        "ffprobe", "-v", "error", *_INPUT_GUARDS,
-        "-select_streams", "a:0",  # only the first audio stream
-        "-show_entries", "format=format_name,duration:stream=codec_name,sample_rate,channels",
-        "-of", "json",
-        str(path),
-    ]  # fmt: skip
-    try:
-        completed = _run(command, timeout=_PROBE_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired as error:
-        raise UnprocessableMediaError("The file could not be analysed in time.") from error
-    if completed.returncode != 0:
-        logger.info("ffprobe rejected an upload", extra={"reason": _last_line(completed.stderr)})
-        raise UnprocessableMediaError("The file is not a readable audio or video file.")
-
-    report = json.loads(completed.stdout)
-    audio_streams = report.get("streams", [])
-    if not audio_streams:
-        raise UnprocessableMediaError("The file has no audio track.")
-    # ffprobe can take random bytes for an audio stream, but then the stream has no
-    # sample rate or no channels. Catch that here, not later in the worker.
-    audio = audio_streams[0]
-    if not (_is_positive(audio.get("sample_rate")) and _is_positive(audio.get("channels"))):
-        raise UnprocessableMediaError("The file is not a readable audio or video file.")
-
+    report = _probe(path)
+    audio = _first_audio_stream(report)
     container = report.get("format", {})
     duration = _parse_duration(container.get("duration"))
     if duration is not None and duration > max_duration_seconds:
@@ -122,6 +101,38 @@ def inspect_media(path: Path, *, max_duration_seconds: float) -> MediaInfo:
     )
 
 
+def _probe(path: Path) -> dict:
+    """Run ffprobe on a file and return its report; raise if it is not readable media."""
+    command = [
+        "ffprobe", "-v", "error", *_INPUT_GUARDS,
+        "-select_streams", "a:0",  # only the first audio stream
+        "-show_entries", "format=format_name,duration:stream=codec_name,sample_rate,channels",
+        "-of", "json",
+        str(path),
+    ]  # fmt: skip
+    try:
+        completed = _run(command, timeout=_PROBE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        raise UnprocessableMediaError("The file could not be analysed in time.") from error
+    if completed.returncode != 0:
+        logger.info("ffprobe rejected an upload", extra={"reason": _last_line(completed.stderr)})
+        raise UnprocessableMediaError("The file is not a readable audio or video file.")
+    return json.loads(completed.stdout)
+
+
+def _first_audio_stream(report: dict) -> dict:
+    """The audio stream in an ffprobe report; raise if there is none, or it is not real."""
+    audio_streams = report.get("streams", [])
+    if not audio_streams:
+        raise UnprocessableMediaError("The file has no audio track.")
+    # ffprobe can take random bytes for an audio stream, but then the stream has no
+    # sample rate or no channels. Catch that here, not later in the worker.
+    audio = audio_streams[0]
+    if not (_is_positive(audio.get("sample_rate")) and _is_positive(audio.get("channels"))):
+        raise UnprocessableMediaError("The file is not a readable audio or video file.")
+    return audio
+
+
 def decode_audio(path: Path, *, max_duration_seconds: float) -> np.ndarray:
     """Decode the first audio track of a media file to 16 kHz mono float32 samples.
 
@@ -131,36 +142,43 @@ def decode_audio(path: Path, *, max_duration_seconds: float) -> np.ndarray:
     small upload therefore cannot expand into an unbounded amount of audio.
     """
     samples_path = path.with_suffix(".pcm")
-    bytes_per_second = SAMPLE_RATE * np.dtype(np.float32).itemsize
-    max_bytes = int(max_duration_seconds * bytes_per_second)
-    command = [
-        "ffmpeg", "-nostdin", "-v", "error", "-y", *_INPUT_GUARDS,
-        "-i", str(path),
-        "-map", "0:a:0",  # only the first audio stream
-        "-ac", "1", "-ar", str(SAMPLE_RATE),
-        "-t", str(max_duration_seconds + 1),
-        "-fs", str(max_bytes + bytes_per_second),
-        "-f", "f32le", str(samples_path),
-    ]  # fmt: skip
+    max_bytes = int(max_duration_seconds * _BYTES_PER_SECOND)
     try:
-        completed = _run(command, timeout=_DECODE_TIMEOUT_SECONDS)
-        if completed.returncode != 0:
-            reason = _last_line(completed.stderr)
-            logger.info("ffmpeg could not decode an upload", extra={"reason": reason})
-            raise UnprocessableMediaError("The audio track could not be decoded.")
+        _decode_to_file(path, samples_path, max_duration_seconds, max_bytes)
         if samples_path.stat().st_size > max_bytes:  # checked before loading it into memory
             raise UnprocessableMediaError(
                 f"The recording is longer than the limit of {_clock(max_duration_seconds)}."
             )
         samples = np.fromfile(samples_path, dtype=np.float32)
-    except subprocess.TimeoutExpired as error:
-        raise UnprocessableMediaError("Decoding the file took too long.") from error
     finally:
         samples_path.unlink(missing_ok=True)
 
     if samples.size == 0:
         raise UnprocessableMediaError("The file contains no audio.")
     return samples
+
+
+def _decode_to_file(
+    source: Path, samples_path: Path, max_duration_seconds: float, max_bytes: int
+) -> None:
+    """Have ffmpeg write the first audio track of a file as raw 16 kHz mono samples."""
+    command = [
+        "ffmpeg", "-nostdin", "-v", "error", "-y", *_INPUT_GUARDS,
+        "-i", str(source),
+        "-map", "0:a:0",  # only the first audio stream
+        "-ac", "1", "-ar", str(SAMPLE_RATE),
+        "-t", str(max_duration_seconds + 1),
+        "-fs", str(max_bytes + _BYTES_PER_SECOND),
+        "-f", "f32le", str(samples_path),
+    ]  # fmt: skip
+    try:
+        completed = _run(command, timeout=_DECODE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired as error:
+        raise UnprocessableMediaError("Decoding the file took too long.") from error
+    if completed.returncode != 0:
+        reason = _last_line(completed.stderr)
+        logger.info("ffmpeg could not decode an upload", extra={"reason": reason})
+        raise UnprocessableMediaError("The audio track could not be decoded.")
 
 
 def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[str]:

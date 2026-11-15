@@ -14,7 +14,7 @@ from pathlib import Path
 
 from app.errors import AppError
 from app.media import SAMPLE_RATE, decode_audio
-from app.models import Job
+from app.models import Job, Transcript
 from app.store import JobStore
 from app.transcriber import ProgressCallback, Transcriber
 
@@ -50,6 +50,7 @@ class TranscriptionWorker:
         self._poll_seconds = poll_seconds
         self._wake = threading.Event()
         self._stopping = threading.Event()
+        self._current_job_id: str | None = None  # the job being processed, if any
         # daemon=True: a job stuck in native code must not keep the process alive at exit.
         self._thread = threading.Thread(target=self._run, name="transcription-worker", daemon=True)
 
@@ -69,11 +70,24 @@ class TranscriptionWorker:
         self._wake.set()
 
     def stop(self, timeout: float = 10.0) -> None:
-        """Ask the worker to stop. A job in progress goes back to the queue."""
+        """Ask the worker to stop. A job in progress goes back to the queue.
+
+        The worker notices the request between segments and puts its job back itself.
+        If it is still inside one long computation when the timeout ends, the job is
+        put back from here, so a shutdown never costs a job one of its attempts.
+        """
         self._stopping.set()
         self._wake.set()
-        if self._thread.is_alive():
-            self._thread.join(timeout)
+        if not self._thread.is_alive():
+            return
+        self._thread.join(timeout)
+        abandoned_job_id = self._current_job_id
+        if self._thread.is_alive() and abandoned_job_id is not None:
+            self._store.release(abandoned_job_id)
+            logger.info(
+                "Shutdown did not wait for the running job, job re-queued",
+                extra={"job_id": abandoned_job_id},
+            )
 
     @property
     def is_alive(self) -> bool:
@@ -89,7 +103,11 @@ class TranscriptionWorker:
                     self._wake.wait(self._poll_seconds)
                     self._wake.clear()
                     continue
-                self._process(job)
+                self._current_job_id = job.id
+                try:
+                    self._process(job)
+                finally:
+                    self._current_job_id = None
             except Exception:
                 # For example the database is briefly unavailable. The worker must outlive
                 # that, or uploads would pile up with nothing left to process them.
@@ -97,6 +115,7 @@ class TranscriptionWorker:
                 self._stopping.wait(self._poll_seconds)
 
     def _process(self, job: Job) -> None:
+        """Run one job to a final state: completed or failed."""
         upload = self._uploads_dir / f"{job.id}{job.extension}"
         context = {"job_id": job.id}
         logger.info(
@@ -105,10 +124,7 @@ class TranscriptionWorker:
         )
         started = time.monotonic()
         try:
-            audio = decode_audio(upload, max_duration_seconds=self._max_duration_seconds)
-            transcript = self._transcriber.transcribe(
-                audio, language=job.requested_language, on_progress=self._progress_reporter(job.id)
-            )
+            transcript, audio_seconds = self._transcribe(job, upload)
         except _ShutdownRequested:
             self._store.release(job.id)
             logger.info("Transcription interrupted by shutdown, job re-queued", extra=context)
@@ -122,20 +138,18 @@ class TranscriptionWorker:
             self._store.fail(job.id, "Transcription failed because of an internal error.")
             logger.exception("Transcription crashed", extra=context)
         else:
-            audio_seconds = len(audio) / SAMPLE_RATE
             self._store.complete(job.id, transcript, duration_seconds=audio_seconds)
-            logger.info(
-                "Transcription completed",
-                extra={
-                    **context,
-                    "language": transcript.language,
-                    "segments": len(transcript.segments),
-                    "audio_seconds": round(audio_seconds, 1),
-                    "elapsed_seconds": round(time.monotonic() - started, 1),
-                },
-            )
+            _log_completed(job, transcript, audio_seconds, time.monotonic() - started)
         # The job reached a final state, so the media file is no longer needed.
         upload.unlink(missing_ok=True)
+
+    def _transcribe(self, job: Job, upload: Path) -> tuple[Transcript, float]:
+        """Decode the upload and transcribe it; return the transcript and its length in seconds."""
+        audio = decode_audio(upload, max_duration_seconds=self._max_duration_seconds)
+        transcript = self._transcriber.transcribe(
+            audio, language=job.requested_language, on_progress=self._progress_reporter(job.id)
+        )
+        return transcript, len(audio) / SAMPLE_RATE
 
     def _progress_reporter(self, job_id: str) -> ProgressCallback:
         last_write = time.monotonic()
@@ -158,3 +172,18 @@ class TranscriptionWorker:
             if _UPLOAD_NAME.match(path.name) and path.name not in needed:
                 path.unlink(missing_ok=True)
                 logger.info("Removed a leftover upload", extra={"file_name": path.name})
+
+
+def _log_completed(
+    job: Job, transcript: Transcript, audio_seconds: float, elapsed_seconds: float
+) -> None:
+    logger.info(
+        "Transcription completed",
+        extra={
+            "job_id": job.id,
+            "language": transcript.language,
+            "segments": len(transcript.segments),
+            "audio_seconds": round(audio_seconds, 1),
+            "elapsed_seconds": round(elapsed_seconds, 1),
+        },
+    )

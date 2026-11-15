@@ -283,3 +283,24 @@ def test_a_database_error_does_not_kill_the_worker(
     assert worker.is_alive
     worker.stop()
     assert not worker.is_alive
+
+
+def test_stopping_does_not_wait_for_a_long_computation_and_still_requeues_the_job(
+    store: JobStore, uploads: Path, samples: Path, transcriber: FakeTranscriber
+) -> None:
+    # The model can spend many seconds inside one computation, where it cannot be
+    # interrupted. A shutdown must not wait for that, and must not cost the job an attempt.
+    worker = make_worker(store, uploads, transcriber)
+    worker.start()
+    transcriber.hold(silently=True)
+    add_upload(store, uploads, samples, "a" * 32)
+    worker.notify()
+    assert transcriber.started.wait(timeout=PATIENCE_SECONDS)
+
+    worker.stop(timeout=0.2)
+
+    job = store.get("a" * 32)
+    assert job.status is JobStatus.QUEUED
+    assert job.attempts == 0
+    assert (uploads / f"{'a' * 32}.wav").exists()
+    transcriber.resume()  # let the abandoned thread finish

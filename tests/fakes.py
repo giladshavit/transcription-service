@@ -11,7 +11,10 @@ from app.transcriber import ProgressCallback
 class FakeTranscriber:
     """Stands in for the real model: no download, and it answers immediately.
 
-    Call ``hold()`` to keep transcriptions "in progress" until ``resume()``.
+    Call ``hold()`` to keep transcriptions "in progress" until ``resume()``. While held
+    it reports progress every few milliseconds, like a model that is producing
+    segments. ``hold(silently=True)`` imitates one long computation instead: nothing
+    is reported until it is resumed.
     """
 
     supported_languages = frozenset({"en", "he"})
@@ -25,8 +28,10 @@ class FakeTranscriber:
         self.started = threading.Event()  # set when a transcription begins
         self._may_finish = threading.Event()
         self._may_finish.set()
+        self._reports_while_held = True
 
-    def hold(self) -> None:
+    def hold(self, *, silently: bool = False) -> None:
+        self._reports_while_held = not silently
         self._may_finish.clear()
 
     def resume(self) -> None:
@@ -43,6 +48,7 @@ class FakeTranscriber:
         if self.error is not None:
             raise self.error
         while not self._may_finish.wait(timeout=0.01):
-            on_progress(0.5)  # like the real model, report progress while working
+            if self._reports_while_held:
+                on_progress(0.5)  # like the real model, report progress while working
         on_progress(1.0)
         return Transcript(language=language or self.detected_language, segments=list(self.segments))

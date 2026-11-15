@@ -55,7 +55,7 @@ for Intel Macs, where Docker is the way to run this):
 
 ```bash
 make install            # create .venv with the locked dependencies
-make test               # 140 tests, a few seconds, no model needed
+make test               # 142 tests, a few seconds, no model needed
 make lint               # ruff (lint and formatting) and mypy (types)
 make test-integration   # the real model on the sample clip (downloads the model once)
 ```
@@ -201,7 +201,9 @@ There is no separate in-memory queue. The worker claims the oldest row with stat
 
 After a crash, jobs left in `processing` go back to the queue. A job that was interrupted
 twice is marked as failed instead, so a file that takes the service down cannot do it
-forever. A clean shutdown puts the running job back without counting an attempt.
+forever. A clean shutdown puts the running job back without counting an attempt: the
+worker notices the request between segments, and if it is still inside one long
+computation when the shutdown timeout ends, the job is put back for it.
 
 SQLite fits a service that runs on one machine: there is nothing to operate, the data is
 on disk, and reads are fast. It stops fitting once several servers must share the state.
@@ -229,22 +231,23 @@ The default was chosen by measuring (Apple M4, CPU, `int8`, beam size 5):
   measures the service's own code path, windows included: 3.9% for the default model.
   The Hebrew and batched figures came from one-off scripts that are not in the repository.
 
-Inside the Docker container on the same machine (linux/arm64, 4 threads), the 8-minute
-recording took about 2 minutes, so a half-hour recording takes roughly 8 minutes. The
-container's memory peaked at 1.5 GB.
+Inside the Docker container on the same machine (linux/arm64, 4 threads), a 30-minute
+video (60 MB) took 5 minutes and 9 seconds from the start of the upload to the finished
+transcript, about six times faster than real time. The container's memory peaked at
+1.25 GB.
 
 `small` is the default because the service is expected to run on a laptop CPU, where
 turnaround time matters. The model is a build argument and a setting, so switching to the
-more accurate model needs no code change. For Hebrew, a model fine-tuned on Hebrew
-(`ivrit-ai/whisper-large-v3-turbo-ct2`, with the language set to `he`) is the better
-choice; it was not benchmarked here.
+more accurate model needs no code change. For Hebrew, a model fine-tuned on Hebrew,
+such as `ivrit-ai/whisper-large-v3-turbo-ct2` with the language set to `he`, should do
+better than either. It was not tried here.
 
 **Batched decoding was measured and rejected as the default.** faster-whisper's
-`BatchedInferencePipeline` was about twice as fast on the same recording with the same
-error rate, but it returns 20 segments of about 24 seconds each, where sequential
-decoding returns 127 segments of about 4 seconds. Subtitles need the short segments.
-Asking the batched pipeline for timestamps brought the segments back, and raised the
-error rate from 4.3% to 10%.
+`BatchedInferencePipeline` was about twice as fast on the same recording with a similar
+error rate (4.3% against 4.1%), but it returns 20 segments of about 24 seconds each,
+where sequential decoding returns 127 segments of about 4 seconds. Subtitles need the
+short segments. Asking the batched pipeline for timestamps brought the segments back,
+and raised the error rate from 4.3% to 10%.
 
 ### Long recordings are transcribed in windows
 
@@ -265,7 +268,11 @@ kept for the rest.
 
 These figures are the memory the transcription step adds, measured by calling the
 transcriber directly (the 2-hour recording is above the service's default limit).
-Accuracy did not suffer: 3.9% WER with windows against 4.1% in a single call.
+Accuracy did not measurably suffer. The 8-minute recording is cut once by 5-minute
+windows and scored 3.9% WER, against 4.1% in a single call; with 2-minute and 1-minute
+windows (3 and 7 cuts) it scored 4.6% and 4.3%. On a sample this small those are the
+same result, and it is read speech with regular pauses, which is the easy case for
+finding a quiet place to cut.
 
 ### Uploaded files are treated as hostile
 
@@ -347,7 +354,10 @@ the service at startup.
 | `LOG_FORMAT` | `text` | `text`, or `json` for one object per line |
 
 In Docker the model is part of the image, so it is chosen when the image is built:
-`WHISPER_MODEL=<repository> docker compose up --build` (or put it in `.env`).
+`WHISPER_MODEL=<repository> docker compose up --build` (or put it in `.env`). The
+compose file passes the other settings through, except `WHISPER_DEVICE`,
+`WHISPER_COMPUTE_TYPE` and `DATA_DIR`: the image is built for CPU, and a GPU needs a
+different base image.
 
 ## Assumptions
 
