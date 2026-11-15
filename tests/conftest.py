@@ -1,5 +1,6 @@
 """Shared test fixtures."""
 
+import random
 import shutil
 import subprocess
 from collections.abc import Callable, Iterator
@@ -72,6 +73,18 @@ def samples(tmp_path_factory: pytest.TempPathFactory) -> Path:
     # Recordings made in a browser look like this.
     with (root / "no_duration.mkv").open("wb") as output:
         _ffmpeg(*tone, "-c:a", "flac", "-f", "matroska", "-", stdout=output.fileno())
+
+    # Ten seconds of audio whose timestamps claim a tenth of a second: a file that
+    # lies about its length to slip past a duration limit.
+    _ffmpeg(
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=10", "-af", "asetpts=PTS/100",
+        "-c:a", "flac", "-f", "matroska", str(root / "compressed_timestamps.mkv"),
+    )  # fmt: skip
+
+    # Random bytes: ffprobe "recognises" these as AAC and FLAC streams with no sample rate.
+    noise = random.Random(0).randbytes(20_000)
+    (root / "noise.aac").write_bytes(noise)
+    (root / "noise.flac").write_bytes(noise)
 
     (root / "not_media.mp3").write_text("this is plain text, not audio\n")
     (root / "empty.mp3").write_bytes(b"")

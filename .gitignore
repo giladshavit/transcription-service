@@ -7,7 +7,7 @@ __pycache__/
 
 # Local configuration and runtime state
 .env
-data/
+/data/
 
 # OS and editors
 .DS_Store

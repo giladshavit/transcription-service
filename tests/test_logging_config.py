@@ -2,7 +2,9 @@ import json
 import logging
 import sys
 
-from app.logging_config import JsonFormatter, TextFormatter
+import pytest
+
+from app.logging_config import JsonFormatter, RoutineRequestFilter, TextFormatter
 
 
 def make_record(message: str = "Job finished", **extra: object) -> logging.LogRecord:
@@ -63,3 +65,33 @@ def test_exceptions_are_included() -> None:
 
     assert "ValueError: boom" in TextFormatter().format(record)
     assert "ValueError: boom" in json.loads(JsonFormatter().format(record))["exception"]
+
+
+def access_record(method: str, path: str, status: int) -> logging.LogRecord:
+    """A record shaped like the ones uvicorn's access logger emits."""
+    return logging.LogRecord(
+        name="uvicorn.access",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg='%s - "%s %s HTTP/%s" %d',
+        args=("127.0.0.1:50000", method, path, "1.1", status),
+        exc_info=None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "status", "kept"),
+    [
+        ("GET", "/health", 200, False),  # the container health check, every 30 seconds
+        ("GET", "/api/transcriptions/3f2a9c1e", 200, False),  # the page polls every second
+        ("GET", "/api/transcriptions/3f2a9c1e", 404, True),  # failures stay visible
+        ("GET", "/api/transcriptions/3f2a9c1e/download?format=srt", 200, True),
+        ("POST", "/api/transcriptions", 202, True),
+        ("GET", "/", 200, True),
+    ],
+)
+def test_only_routine_successful_requests_are_left_out_of_the_access_log(
+    method: str, path: str, status: int, kept: bool
+) -> None:
+    assert RoutineRequestFilter().filter(access_record(method, path, status)) is kept

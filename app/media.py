@@ -86,7 +86,7 @@ def inspect_media(path: Path, *, max_duration_seconds: float) -> MediaInfo:
     command = [
         "ffprobe", "-v", "error", *_INPUT_GUARDS,
         "-select_streams", "a:0",  # only the first audio stream
-        "-show_entries", "format=format_name,duration:stream=codec_name",
+        "-show_entries", "format=format_name,duration:stream=codec_name,sample_rate,channels",
         "-of", "json",
         str(path),
     ]  # fmt: skip
@@ -102,6 +102,11 @@ def inspect_media(path: Path, *, max_duration_seconds: float) -> MediaInfo:
     audio_streams = report.get("streams", [])
     if not audio_streams:
         raise UnprocessableMediaError("The file has no audio track.")
+    # ffprobe can take random bytes for an audio stream, but then the stream has no
+    # sample rate or no channels. Catch that here, not later in the worker.
+    audio = audio_streams[0]
+    if not (_is_positive(audio.get("sample_rate")) and _is_positive(audio.get("channels"))):
+        raise UnprocessableMediaError("The file is not a readable audio or video file.")
 
     container = report.get("format", {})
     duration = _parse_duration(container.get("duration"))
@@ -112,7 +117,7 @@ def inspect_media(path: Path, *, max_duration_seconds: float) -> MediaInfo:
         )
     return MediaInfo(
         container=container.get("format_name", "unknown"),
-        audio_codec=audio_streams[0].get("codec_name", "unknown"),
+        audio_codec=audio.get("codec_name", "unknown"),
         duration_seconds=duration,
     )
 
@@ -121,16 +126,20 @@ def decode_audio(path: Path, *, max_duration_seconds: float) -> np.ndarray:
     """Decode the first audio track of a media file to 16 kHz mono float32 samples.
 
     ffmpeg writes raw samples to a temporary file next to the input, which is loaded
-    and then removed. Decoding stops just past the limit even if the file's metadata
-    claims it is short, so a small file cannot expand into an unbounded amount of audio.
+    and then removed. The output is cut off just past the limit in two ways: by time
+    (-t), and by size (-fs), because a crafted file can lie about its timestamps. A
+    small upload therefore cannot expand into an unbounded amount of audio.
     """
     samples_path = path.with_suffix(".pcm")
+    bytes_per_second = SAMPLE_RATE * np.dtype(np.float32).itemsize
+    max_bytes = int(max_duration_seconds * bytes_per_second)
     command = [
         "ffmpeg", "-nostdin", "-v", "error", "-y", *_INPUT_GUARDS,
         "-i", str(path),
         "-map", "0:a:0",  # only the first audio stream
         "-ac", "1", "-ar", str(SAMPLE_RATE),
         "-t", str(max_duration_seconds + 1),
+        "-fs", str(max_bytes + bytes_per_second),
         "-f", "f32le", str(samples_path),
     ]  # fmt: skip
     try:
@@ -139,6 +148,10 @@ def decode_audio(path: Path, *, max_duration_seconds: float) -> np.ndarray:
             reason = _last_line(completed.stderr)
             logger.info("ffmpeg could not decode an upload", extra={"reason": reason})
             raise UnprocessableMediaError("The audio track could not be decoded.")
+        if samples_path.stat().st_size > max_bytes:  # checked before loading it into memory
+            raise UnprocessableMediaError(
+                f"The recording is longer than the limit of {_clock(max_duration_seconds)}."
+            )
         samples = np.fromfile(samples_path, dtype=np.float32)
     except subprocess.TimeoutExpired as error:
         raise UnprocessableMediaError("Decoding the file took too long.") from error
@@ -147,10 +160,6 @@ def decode_audio(path: Path, *, max_duration_seconds: float) -> np.ndarray:
 
     if samples.size == 0:
         raise UnprocessableMediaError("The file contains no audio.")
-    if samples.size > max_duration_seconds * SAMPLE_RATE:
-        raise UnprocessableMediaError(
-            f"The recording is longer than the limit of {_clock(max_duration_seconds)}."
-        )
     return samples
 
 
@@ -159,6 +168,14 @@ def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[s
     return subprocess.run(
         command, capture_output=True, text=True, errors="replace", timeout=timeout
     )
+
+
+def _is_positive(value: object) -> bool:
+    """True for a positive number, whether ffprobe wrote it as 44100 or as "44100"."""
+    try:
+        return int(value) > 0  # type: ignore[call-overload]
+    except (TypeError, ValueError):
+        return False
 
 
 def _parse_duration(value: str | None) -> float | None:

@@ -10,6 +10,7 @@ into the message, so they cannot forge extra log lines.
 
 import json
 import logging
+import re
 import sys
 from datetime import UTC, datetime
 from typing import Any
@@ -24,6 +25,8 @@ _RESERVED_ATTRIBUTES = frozenset(vars(logging.makeLogRecord({}))) | {
 }
 
 _UVICORN_LOGGERS = ("uvicorn", "uvicorn.error", "uvicorn.access")
+
+_STATUS_POLL_PATH = re.compile(r"/api/transcriptions/[^/?]+")
 
 
 def _timestamp(record: logging.LogRecord) -> str:
@@ -70,6 +73,26 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(entry, ensure_ascii=False, default=str)
 
 
+class RoutineRequestFilter(logging.Filter):
+    """Keeps repetitive successful requests out of the access log.
+
+    The page asks for a job's status every second and the container health check
+    runs every 30 seconds. At one line each they would bury the lines that matter.
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        # uvicorn's access records carry (client, method, path, http version, status).
+        if not (isinstance(record.args, tuple) and len(record.args) == 5):
+            return True
+        _, method, path, _, status = record.args
+        is_routine = (
+            method == "GET"
+            and status == 200
+            and (path == "/health" or _STATUS_POLL_PATH.fullmatch(str(path)) is not None)
+        )
+        return not is_routine
+
+
 def configure_logging(level: str, log_format: str) -> None:
     """Send every logger, including uvicorn's, through a single stdout handler."""
     handler = logging.StreamHandler(sys.stdout)
@@ -84,3 +107,8 @@ def configure_logging(level: str, log_format: str) -> None:
         uvicorn_logger = logging.getLogger(name)
         uvicorn_logger.handlers = []
         uvicorn_logger.propagate = True
+
+    # At DEBUG level every request is logged, including the routine ones.
+    logging.getLogger("uvicorn.access").filters = (
+        [] if level == "DEBUG" else [RoutineRequestFilter()]
+    )

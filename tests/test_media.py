@@ -54,7 +54,7 @@ def test_inspect_media_accepts_a_file_that_does_not_declare_its_duration(samples
     assert info.duration_seconds is None
 
 
-@pytest.mark.parametrize("name", ["not_media.mp3", "empty.mp3"])
+@pytest.mark.parametrize("name", ["not_media.mp3", "empty.mp3", "noise.aac", "noise.flac"])
 def test_inspect_media_rejects_files_that_are_not_media(samples: Path, name: str) -> None:
     with pytest.raises(UnprocessableMediaError) as raised:
         inspect_media(samples / name, max_duration_seconds=60)
@@ -95,6 +95,13 @@ def test_decode_audio_extracts_the_audio_track_of_a_video(samples: Path) -> None
 def test_decode_audio_enforces_the_limit_when_the_file_hides_its_duration(samples: Path) -> None:
     with pytest.raises(UnprocessableMediaError, match="limit"):
         decode_audio(samples / "no_duration.mkv", max_duration_seconds=1)
+
+
+def test_decode_audio_enforces_the_limit_when_the_timestamps_lie(samples: Path) -> None:
+    # The file declares 0.1 seconds and holds 10, so neither its declared duration nor
+    # its timestamps can be trusted: what counts is how much audio comes out.
+    with pytest.raises(UnprocessableMediaError, match="limit"):
+        decode_audio(samples / "compressed_timestamps.mkv", max_duration_seconds=2)
 
 
 def test_decode_audio_rejects_a_file_that_cannot_be_decoded(samples: Path) -> None:
