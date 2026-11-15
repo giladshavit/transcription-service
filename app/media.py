@@ -171,11 +171,9 @@ def _run(command: list[str], *, timeout: float) -> subprocess.CompletedProcess[s
 
 
 def _is_positive(value: object) -> bool:
-    """True for a positive number, whether ffprobe wrote it as 44100 or as "44100"."""
-    try:
-        return int(value) > 0  # type: ignore[call-overload]
-    except (TypeError, ValueError):
-        return False
+    """True for a positive whole number, whether ffprobe wrote it as 44100 or as "44100"."""
+    digits = str(value)
+    return digits.isdigit() and int(digits) > 0
 
 
 def _parse_duration(value: str | None) -> float | None:

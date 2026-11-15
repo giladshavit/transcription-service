@@ -24,6 +24,11 @@ markers = [
     "integration: slow tests that load the real speech-to-text model",
 ]
 
+[tool.mypy]
+files = ["app"]
+# faster-whisper ships no type information.
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -47,6 +52,7 @@ select = [
 [dependency-groups]
 dev = [
     "httpx2>=2.16.0",
+    "mypy>=2.4.1",
     "pytest>=9.2.0",
     "ruff>=0.17.5",
 ]

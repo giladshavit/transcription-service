@@ -32,7 +32,7 @@ To try it without a browser, upload the bundled 11-second sample and print its t
 
 ## Running the tests
 
-Inside Docker, with nothing else installed (lint and the whole fast suite):
+Inside Docker, with nothing else installed (lint, type check and the whole fast suite):
 
 ```bash
 docker compose run --rm --build tests
@@ -43,7 +43,7 @@ Locally (needs Python 3.12 or newer, [uv](https://docs.astral.sh/uv/) and `ffmpe
 ```bash
 make install            # create .venv with the locked dependencies
 make test               # 140 tests, a few seconds, no model needed
-make lint               # ruff: lint and formatting
+make lint               # ruff (lint and formatting) and mypy (types)
 make test-integration   # the real model on the sample clip (downloads the model once)
 ```
 

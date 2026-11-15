@@ -1,9 +1,10 @@
 """Serves the single-page user interface: plain HTML, CSS and JavaScript, no build step."""
 
 from pathlib import Path
+from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 _STATIC_DIR = Path(__file__).parent / "static"
@@ -39,7 +40,7 @@ class _RevalidatedStaticFiles(StaticFiles):
     the page's script or stylesheet is picked up immediately.
     """
 
-    def file_response(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+    def file_response(self, *args: Any, **kwargs: Any) -> Response:
         response = super().file_response(*args, **kwargs)
         response.headers["Cache-Control"] = "no-cache"
         return response

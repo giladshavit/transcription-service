@@ -31,9 +31,10 @@ test: ## Run the fast test suite (uses a fake model)
 test-integration: ## Run the tests that use the real model (downloads it on first use)
 	uv run pytest -m integration
 
-lint: ## Check formatting and common mistakes
+lint: ## Check formatting, common mistakes and types
 	uv run ruff check .
 	uv run ruff format --check .
+	uv run mypy
 
 format: ## Fix formatting and auto-fixable lint findings
 	uv run ruff format .

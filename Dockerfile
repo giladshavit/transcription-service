@@ -56,7 +56,7 @@ FROM deps AS test
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen
 COPY . .
-CMD ["sh", "-c", "ruff check . && ruff format --check . && pytest"]
+CMD ["sh", "-c", "ruff check . && ruff format --check . && mypy && pytest"]
 
 
 FROM base AS runtime
