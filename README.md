@@ -361,3 +361,26 @@ In Docker the model is part of the image, so change it at build time:
 - **No word-level timestamps or speaker labels.**
 - **The page's JavaScript has no automated tests.** It was checked by hand in a browser.
 - The decoded audio of a recording is held in memory (about 230 MB per hour).
+
+## How this was built
+
+I built this with Claude Code, Anthropic's coding agent, as a pair programmer. I set the
+requirements, questioned the options and made the design decisions one section at a
+time; Claude wrote the code and the tests and ran the measurements quoted above. For a
+second opinion on the design I sent one focused brief to two other models, OpenAI Codex
+and Google Gemini, and compared their answers.
+
+The Claude Code skills that shaped the work:
+
+| Skill | What it did here |
+|---|---|
+| `brainstorming` | Turned the assignment into a design through questions and alternatives, before any code |
+| `test-driven-development` | Most backend behaviour got a failing test first, then the code that makes it pass |
+| `consult-models` | Sent the design brief to Codex and Gemini and compared their second opinions |
+| `council-review` | A review before submitting: five reviewers with different reasoning methods, peer review and a devil's advocate |
+| `frontend-design` | A deliberate visual direction for the page: palette, type and one signature element |
+| `ui-ux-pro-max` | Design-system and accessibility guidelines for the page |
+
+Two more checks ran as groups of agents: a survey of current open speech-to-text models
+with fact-checking, and a review of the design before it was implemented. That review
+is where the windowed transcription and the hardening of the media handling came from.
