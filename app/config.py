@@ -32,8 +32,9 @@ class Settings(BaseSettings):
 
     # --- Limits that protect the machine ---
     max_upload_mb: int = Field(default=2048, gt=0)
-    # A recording is decoded into memory as a whole, so its length must be bounded.
-    max_duration_minutes: int = Field(default=240, gt=0)
+    # The expected input is up to about half an hour; the default leaves a margin.
+    # The decoded audio is held in memory, so the length must be bounded in any case.
+    max_duration_minutes: int = Field(default=60, gt=0)
     # New uploads are refused (503) while this many jobs are waiting or running.
     max_pending_jobs: int = Field(default=10, gt=0)
     # A job that was interrupted by a crash this many times is marked as failed.

@@ -209,7 +209,7 @@ The default was chosen by measuring (Apple M4, CPU, `int8`, beam size 5):
   small: they guided a choice and are not a benchmark claim.
 
 Inside the Docker container on the same machine (linux/arm64, 4 threads), the 8-minute
-recording took about 2 minutes, so an hour of speech takes roughly 15 minutes, and the
+recording took about 2 minutes, so a half-hour recording takes roughly 8 minutes. The
 container's memory peaked at 1.5 GB.
 
 `small` is the default because the service is expected to run on a laptop CPU, where
@@ -314,7 +314,7 @@ the service at startup.
 | `WHISPER_CPU_THREADS` | `0` | Threads for inference; `0` lets CTranslate2 choose (4) |
 | `WHISPER_BEAM_SIZE` | `5` | Beam size for decoding |
 | `MAX_UPLOAD_MB` | `2048` | Largest accepted upload |
-| `MAX_DURATION_MINUTES` | `240` | Longest accepted recording |
+| `MAX_DURATION_MINUTES` | `60` | Longest accepted recording |
 | `MAX_PENDING_JOBS` | `10` | Jobs waiting or running before uploads get `503` |
 | `MAX_JOB_ATTEMPTS` | `2` | Interrupted attempts before a job is marked failed |
 | `DATA_DIR` | `data` (`/data` in Docker) | Job database and uploads in progress |
@@ -326,6 +326,9 @@ In Docker the model is part of the image, so change it at build time:
 
 ## Assumptions
 
+- A recording is up to about half an hour long, as confirmed for this assignment. The
+  default limit is one hour, to leave a margin, and it is a setting. Because of the
+  windowed transcription, raising it costs time and disk space, not memory.
 - The service runs on one machine, on CPU.
 - English is the main language. Other languages go through the same multilingual model
   with lower accuracy.
