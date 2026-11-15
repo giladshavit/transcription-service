@@ -1,0 +1,48 @@
+[project]
+name = "transcription-service"
+version = "0.1.0"
+description = "Upload an audio or video file and get a transcription. FastAPI + faster-whisper (Whisper weights from Hugging Face)."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.163.1",
+    "faster-whisper>=1.2.1",
+    "numpy>=2.5.4",
+    "pydantic-settings>=2.16.3",
+    "python-multipart>=0.0.33",
+    "uvicorn>=0.54.0",
+]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-m 'not integration'"
+markers = [
+    "integration: slow tests that load the real speech-to-text model",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # import order
+    "UP",  # modern Python idioms
+    "B",   # likely bugs
+    "SIM", # simplifications
+    "PTH", # pathlib over os.path
+    "RUF", # ruff-specific checks
+]
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.2.0",
+    "ruff>=0.17.5",
+]
