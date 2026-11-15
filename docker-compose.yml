@@ -3,6 +3,10 @@ services:
     build:
       context: .
       target: runtime
+      args:
+        # The model is baked into the image, so choosing another one means rebuilding:
+        #   WHISPER_MODEL=<Hugging Face repository> docker compose up --build
+        WHISPER_MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-small}
     image: transcription-service
     ports:
       # Published on this machine only: the service has no authentication.
@@ -13,8 +17,7 @@ services:
       - data:/data
     environment:
       # Passed through when set in the shell or in a .env file next to this file
-      # (see .env.example). The model is not here: it is baked into the image, so it
-      # is changed at build time.
+      # (see .env.example). The model is not here: it is a build argument, above.
       - WHISPER_CPU_THREADS
       - WHISPER_BEAM_SIZE
       - MAX_UPLOAD_MB

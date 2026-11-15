@@ -29,7 +29,8 @@ Then open <http://localhost:8000>.
 - Stop with `docker compose down`. Add `-v` to also delete the stored transcripts.
 
 To try it without a browser, upload the bundled 11-second sample and print its
-transcript (the script needs `curl` and `python3` on the host):
+transcript. The script needs `curl` and `python3` on the host, and takes the address as
+an argument if the port was changed (`./scripts/smoke_test.sh http://localhost:8080`):
 
 ```console
 $ ./scripts/smoke_test.sh
@@ -46,7 +47,9 @@ Inside Docker, with nothing else installed (lint, type check and the whole fast 
 docker compose run --rm --build tests
 ```
 
-Locally (needs Python 3.12 or newer, [uv](https://docs.astral.sh/uv/) and `ffmpeg`):
+Locally (needs Python 3.12 or newer, [uv](https://docs.astral.sh/uv/) and `ffmpeg`, on
+Linux or an Apple Silicon Mac: one dependency, onnxruntime, no longer publishes wheels
+for Intel Macs, where Docker is the way to run this):
 
 ```bash
 make install            # create .venv with the locked dependencies
@@ -339,8 +342,8 @@ the service at startup.
 | `LOG_LEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING` or `ERROR` |
 | `LOG_FORMAT` | `text` | `text`, or `json` for one object per line |
 
-In Docker the model is part of the image, so change it at build time:
-`docker compose build --build-arg WHISPER_MODEL=<repository>`.
+In Docker the model is part of the image, so it is chosen when the image is built:
+`WHISPER_MODEL=<repository> docker compose up --build` (or put it in `.env`).
 
 ## Assumptions
 

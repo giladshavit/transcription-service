@@ -45,7 +45,7 @@ FROM deps AS model
 
 # Baked into the image so that the service starts at once and works without network
 # access. The price is a larger image. Build with another model:
-#   docker compose build --build-arg WHISPER_MODEL=<Hugging Face repository>
+#   WHISPER_MODEL=<Hugging Face repository> docker compose up --build
 ARG WHISPER_MODEL=Systran/faster-whisper-small
 # HF_HUB_DISABLE_XET=1 downloads over plain HTTP. The default transfer keeps a chunk
 # cache of its own under HF_HOME, which would be copied into the image with the model.
