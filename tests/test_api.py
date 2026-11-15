@@ -3,7 +3,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
 
@@ -23,7 +23,7 @@ def upload(
     *,
     filename: str | None = None,
     language: str | None = None,
-) -> httpx.Response:
+) -> httpx2.Response:
     with (samples / source).open("rb") as media:
         return client.post(
             "/api/transcriptions",

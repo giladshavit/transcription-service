@@ -1,0 +1,35 @@
+services:
+  app:
+    build:
+      context: .
+      target: runtime
+    image: transcription-service
+    ports:
+      # Published on this machine only: the service has no authentication.
+      # Use another port with: PORT=8080 docker compose up
+      - "127.0.0.1:${PORT:-8000}:8000"
+    volumes:
+      # The job database and uploads in progress survive `docker compose down`.
+      - data:/data
+    env_file:
+      # Optional overrides, the same file a local run reads (see .env.example).
+      - path: .env
+        required: false
+    init: true # reaps finished ffmpeg processes and forwards signals
+    stop_grace_period: 30s # time for the worker to put a running job back in the queue
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+  # Lint and tests inside the image: docker compose run --rm --build tests
+  tests:
+    build:
+      context: .
+      target: test
+    profiles:
+      - tests
+
+volumes:
+  data:

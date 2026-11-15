@@ -1,0 +1,12 @@
+# Keep the build context small and the image free of local state.
+.git
+.github
+.venv
+.env
+.idea
+.vscode
+.claude
+.pytest_cache
+.ruff_cache
+**/__pycache__
+data
