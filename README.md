@@ -207,6 +207,8 @@ The default was chosen by measuring (Apple M4, CPU, `int8`, beam size 5):
   utterances by one reader. Hebrew: 12 clips from the FLEURS test set.
 - WER (word error rate) after lower-casing and removing punctuation. The samples are
   small: they guided a choice and are not a benchmark claim.
+- `uv run python scripts/benchmark.py [model]` repeats the English measurement through
+  the service's own code path.
 
 Inside the Docker container on the same machine (linux/arm64, 4 threads), the 8-minute
 recording took about 2 minutes, so a half-hour recording takes roughly 8 minutes. The
@@ -332,8 +334,8 @@ In Docker the model is part of the image, so change it at build time:
 - The service runs on one machine, on CPU.
 - English is the main language. Other languages go through the same multilingual model
   with lower accuracy.
-- There are no user accounts. A job id is a random 128-bit value and acts as the key to
-  its transcript, and there is no endpoint that lists jobs.
+- There are no user accounts. A job id is a random UUID and acts as the key to its
+  transcript, and there is no endpoint that lists jobs.
 - Transcripts are kept until the data volume is deleted. Uploaded media is deleted as
   soon as its job finishes or fails.
 
