@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/giladshavit/transcription-service/actions/workflows/ci.yml/badge.svg)](https://github.com/giladshavit/transcription-service/actions/workflows/ci.yml)
 
+Built by Gilad Shavit.
+
 Upload an audio or video file in the browser and get a transcript with timestamps. Copy
 it, or download it as plain text, SRT or WebVTT subtitles, or JSON.
 
@@ -300,6 +302,8 @@ third-party requests (system fonts only).
   wrong type is refused before it is uploaded, without duplicating the limits.
 - Progress is shown as a timeline of the recording itself, with the position reached and
   an estimate of the time left.
+- The transcript can be read with timecodes or as plain paragraphs, and the copy button
+  copies whichever is on screen.
 - While the page that uploaded the file is still open, the browser plays the local file:
   a timecode in the transcript plays from that moment and the spoken line is
   highlighted. The server does not keep the media file for this.

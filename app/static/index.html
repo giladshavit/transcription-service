@@ -94,7 +94,10 @@
 
     <!-- 3. The transcript -->
     <section id="view-result" class="view" aria-labelledby="result-title" hidden>
-      <p class="eyebrow">Transcript</p>
+      <div class="view__header">
+        <p class="eyebrow">Transcript</p>
+        <button class="button button--small" id="another-button" type="button">Transcribe another file</button>
+      </div>
       <h1 id="result-title" tabindex="-1" dir="auto"></h1>
       <p class="result-facts" id="result-facts"></p>
 
@@ -102,6 +105,10 @@
 
       <div class="toolbar">
         <button class="button button--primary" id="copy-button" type="button">Copy text</button>
+        <div class="layout-switch" role="group" aria-label="How to show the transcript">
+          <button class="layout-switch__option" type="button" data-layout="timed" aria-pressed="true">Timecodes</button>
+          <button class="layout-switch__option" type="button" data-layout="paragraphs" aria-pressed="false">Paragraphs</button>
+        </div>
         <div class="downloads" role="group" aria-label="Download the transcript">
           <span class="downloads__label">Download</span>
           <a class="downloads__link" data-format="txt" download>TXT</a>
@@ -112,9 +119,8 @@
       </div>
 
       <ol class="transcript" id="transcript"></ol>
+      <div class="transcript transcript--paragraphs" id="transcript-paragraphs" hidden></div>
       <p class="message" id="no-speech" hidden>No speech was found in this recording.</p>
-
-      <button class="button" id="another-button" type="button">Transcribe another file</button>
     </section>
 
     <!-- A job that failed, or a transcript that no longer exists -->
@@ -128,6 +134,7 @@
 
   <footer class="colophon">
     <p>Speech recognition by <span id="model-name">Whisper</span>, running on this server. Uploaded files are deleted as soon as their transcript is ready.</p>
+    <p>Built by Gilad Shavit. <a href="https://github.com/giladshavit/transcription-service">Source code on GitHub</a></p>
   </footer>
 </body>
 </html>

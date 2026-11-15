@@ -12,6 +12,11 @@ const POLL_INTERVAL_MS = 1000;
 const SLOWEST_POLL_INTERVAL_MS = 5000;
 const RECENT_STORAGE_KEY = "transcription-service.recent";
 const RECENT_LIMIT = 8;
+const LAYOUT_STORAGE_KEY = "transcription-service.layout";
+// In the paragraph layout, a paragraph ends after a pause this long, or at the end of
+// a sentence once it has grown this long.
+const PARAGRAPH_PAUSE_SECONDS = 2;
+const PARAGRAPH_MIN_CHARACTERS = 500;
 
 // Languages Whisper supports that are written right to left.
 const RIGHT_TO_LEFT_LANGUAGES = new Set(["ar", "fa", "he", "ps", "sd", "ur", "yi"]);
@@ -29,7 +34,10 @@ const state = {
   firstProgress: null, // {time, progress}: the first progress we saw, for the estimate
   cues: [], // [{start, end, element}] of the transcript on screen
   activeCue: null,
-  transcriptText: "",
+  transcriptText: "", // one segment per line
+  paragraphs: [], // the same transcript as flowing text
+  layout: "timed", // "timed" (timecodes) or "paragraphs"
+  defaultFileHint: "Audio or video", // replaced by the server's limits once they load
 };
 
 // ---------- Formatting ----------
@@ -140,6 +148,19 @@ function chooseFile(file) {
     byId("dropzone-title").textContent = file.name;
     byId("file-hint").textContent = `${formatBytes(file.size)}. Click to choose a different file.`;
   }
+}
+
+/** Back to an empty form, so the previous file cannot be submitted again by mistake. */
+function clearChosenFile() {
+  state.file = null;
+  byId("file-input").value = "";
+  byId("dropzone").classList.remove("has-file");
+  byId("start-button").disabled = true;
+  const choose = document.createElement("span");
+  choose.className = "dropzone__choose";
+  choose.textContent = "choose a file";
+  byId("dropzone-title").replaceChildren("Drop a file here, or ", choose);
+  byId("file-hint").textContent = state.defaultFileHint;
 }
 
 function setUploadError(message) {
@@ -408,10 +429,13 @@ function renderResult(job) {
 
   const playable = preparePlayer(job);
   renderTranscript(job.segments, playable);
+  renderParagraphs(job.segments);
   state.transcriptText = job.text;
-  byId("transcript").lang = job.language ?? "";
-  byId("transcript").dir = RIGHT_TO_LEFT_LANGUAGES.has(job.language) ? "rtl" : "ltr";
-  byId("transcript").hidden = job.segments.length === 0;
+  for (const container of [byId("transcript"), byId("transcript-paragraphs")]) {
+    container.lang = job.language ?? "";
+    container.dir = RIGHT_TO_LEFT_LANGUAGES.has(job.language) ? "rtl" : "ltr";
+  }
+  showLayout(state.layout);
   byId("no-speech").hidden = job.segments.length > 0;
   byId("copy-button").disabled = job.segments.length === 0;
   byId("copy-button").textContent = "Copy text";
@@ -448,6 +472,52 @@ function renderTranscript(segments, playable) {
     state.cues.push({ start: segment.start, end: segment.end, element: item });
   }
   list.replaceChildren(lines);
+}
+
+/** Join the segments into paragraphs of flowing text. */
+function toParagraphs(segments) {
+  const paragraphs = [];
+  let sentences = [];
+  let length = 0;
+  segments.forEach((segment, index) => {
+    sentences.push(segment.text);
+    length += segment.text.length;
+    const next = segments[index + 1];
+    const pauseFollows = next && next.start - segment.end >= PARAGRAPH_PAUSE_SECONDS;
+    const endsSentence = /[.!?]["')\]]?$/.test(segment.text);
+    if (!next || pauseFollows || (endsSentence && length >= PARAGRAPH_MIN_CHARACTERS)) {
+      paragraphs.push(sentences.join(" "));
+      sentences = [];
+      length = 0;
+    }
+  });
+  return paragraphs;
+}
+
+function renderParagraphs(segments) {
+  state.paragraphs = toParagraphs(segments);
+  const elements = state.paragraphs.map((text) => {
+    const paragraph = document.createElement("p");
+    paragraph.textContent = text;
+    return paragraph;
+  });
+  byId("transcript-paragraphs").replaceChildren(...elements);
+}
+
+/** Show the transcript with timecodes ("timed") or as paragraphs, and remember the choice. */
+function showLayout(layout) {
+  state.layout = layout === "paragraphs" ? "paragraphs" : "timed";
+  const empty = state.cues.length === 0;
+  byId("transcript").hidden = empty || state.layout !== "timed";
+  byId("transcript-paragraphs").hidden = empty || state.layout !== "paragraphs";
+  for (const option of document.querySelectorAll(".layout-switch__option")) {
+    option.setAttribute("aria-pressed", String(option.dataset.layout === state.layout));
+  }
+  try {
+    window.localStorage.setItem(LAYOUT_STORAGE_KEY, state.layout);
+  } catch {
+    // Storage can be unavailable (private browsing); the choice then lasts for this visit.
+  }
 }
 
 /**
@@ -489,13 +559,16 @@ function highlightSpokenCue() {
 
 async function copyTranscript() {
   const button = byId("copy-button");
+  const inParagraphs = state.layout === "paragraphs";
   try {
-    await navigator.clipboard.writeText(state.transcriptText);
+    // Copy what is on screen: paragraphs, or one segment per line.
+    const text = inParagraphs ? state.paragraphs.join("\n\n") : state.transcriptText;
+    await navigator.clipboard.writeText(text);
     button.textContent = "Copied";
   } catch {
     // No clipboard access (an insecure origin, for example): select the text instead.
     const range = document.createRange();
-    range.selectNodeContents(byId("transcript"));
+    range.selectNodeContents(byId(inParagraphs ? "transcript-paragraphs" : "transcript"));
     const selection = window.getSelection();
     selection.removeAllRanges();
     selection.addRange(range);
@@ -571,8 +644,9 @@ async function loadConfig() {
   const common = ["MP3", "WAV", "M4A", "MP4", "MOV", "MKV", "WebM"].filter((name) =>
     extensions.includes(`.${name.toLowerCase()}`),
   );
-  byId("file-hint").textContent =
+  state.defaultFileHint =
     `${common.join(", ")} and more, up to ${formatBytes(maxBytes)} and ${maxMinutes} minutes`;
+  if (state.file === null) byId("file-hint").textContent = state.defaultFileHint;
   byId("model-name").textContent = `Whisper (${model})`;
 
   const options = languages
@@ -594,8 +668,10 @@ function route({ moveFocus = true } = {}) {
 }
 
 function leaveJob() {
-  // Drop "#job=..." from the address without adding a history entry, then show the form.
+  // Drop "#job=..." from the address without adding a history entry, then show an
+  // empty form.
   window.history.replaceState(null, "", window.location.pathname);
+  clearChosenFile();
   route();
 }
 
@@ -610,6 +686,9 @@ function init() {
   byId("another-button").addEventListener("click", leaveJob);
   byId("retry-button").addEventListener("click", leaveJob);
   byId("player").addEventListener("timeupdate", highlightSpokenCue);
+  for (const option of document.querySelectorAll(".layout-switch__option")) {
+    option.addEventListener("click", () => showLayout(option.dataset.layout));
+  }
   byId("transcript").addEventListener("click", (event) => {
     const timeButton = event.target.closest("button.cue__time");
     if (timeButton) playFrom(Number(timeButton.dataset.start));
@@ -628,6 +707,11 @@ function init() {
     if (state.upload) event.preventDefault(); // closing the tab would cancel the upload
   });
 
+  try {
+    state.layout = window.localStorage.getItem(LAYOUT_STORAGE_KEY) ?? state.layout;
+  } catch {
+    // Storage is unavailable: keep the default layout.
+  }
   loadConfig();
   route({ moveFocus: false });
 }

@@ -64,6 +64,10 @@ def create_app(settings: Settings | None = None, transcriber: Transcriber | None
         title="Transcription Service",
         description="Upload an audio or video file and get a transcription.",
         version=__version__,
+        contact={
+            "name": "Gilad Shavit",
+            "url": "https://github.com/giladshavit/transcription-service",
+        },
         lifespan=lifespan,
     )
     app.state.settings = settings

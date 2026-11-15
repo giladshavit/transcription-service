@@ -163,6 +163,9 @@ main {
 }
 
 .colophon {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   padding-block: 20px 28px;
   border-top: 1px solid var(--rule);
   color: var(--ink-soft);
@@ -209,6 +212,18 @@ h1 {
 
 .eyebrow + h1 {
   margin-top: -16px;
+}
+
+/* A view's label on the left, its secondary action on the right. */
+.view__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.view__header + h1 {
+  margin-top: -12px;
 }
 
 /* ---------- Upload form ---------- */
@@ -347,6 +362,12 @@ h1 {
   font-weight: 500;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+
+.button--small {
+  min-height: 36px;
+  padding: 0 14px;
+  font-size: 0.8125rem;
 }
 
 .button:disabled {
@@ -515,6 +536,34 @@ h1 {
   flex-wrap: wrap;
 }
 
+/* Two ways to read the transcript: with timecodes, or as plain paragraphs. */
+.layout-switch {
+  display: inline-flex;
+  overflow: hidden;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.layout-switch__option {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font: 600 0.8125rem/1 var(--font-ui);
+  cursor: pointer;
+}
+
+.layout-switch__option + .layout-switch__option {
+  border-left: 1px solid var(--rule-strong);
+}
+
+.layout-switch__option[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--ink);
+}
+
 .downloads {
   display: flex;
   align-items: center;
@@ -554,6 +603,13 @@ h1 {
   border: 1px solid var(--rule);
   border-radius: var(--radius-large);
   background: var(--surface);
+}
+
+.transcript--paragraphs {
+  gap: 1em;
+  padding: 20px 24px;
+  font: 1.0625rem/1.75 var(--font-document);
+  overflow-wrap: anywhere;
 }
 
 .cue {
